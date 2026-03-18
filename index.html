@@ -1,42 +1,177 @@
-// 1. 建立一個全域變數來儲存 AudioContext
-let audioCtx = null;
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>行動網頁鋼琴 - 修復版</title>
+    <style>
+        :root {
+            --white-key-width: 50px;
+            --white-key-height: 200px;
+            --black-key-width: 34px;
+            --black-key-height: 120px;
+        }
 
-// 2. 修復：針對 iOS 的「靜音解鎖」小技巧
-function unlockAudioContext(context) {
-    if (context.state !== 'suspended') return;
-    const b = document.body;
-    const events = ['touchstart', 'touchend', 'mousedown', 'keydown'];
-    events.forEach(e => b.addEventListener(e, unlock, { once: true }));
+        body {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #1a1a1a;
+            font-family: sans-serif;
+            overflow: hidden;
+            touch-action: none;
+        }
 
-    function unlock() {
-        context.resume().then(clean);
-    }
-    function clean() {
-        events.forEach(e => b.removeEventListener(e, unlock));
-    }
-}
+        /* 啟動按鈕 (大大的，防止點不到) */
+        #overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: #000;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            color: white;
+            cursor: pointer;
+        }
 
-// 3. 啟動 App 的核心邏輯
-async function startApp() {
-    // 建立 AudioContext (相容性寫法)
-    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-    if (!audioCtx) {
-        audioCtx = new AudioContextClass();
-    }
+        .start-btn {
+            padding: 20px 40px;
+            font-size: 24px;
+            background: #4CAF50;
+            border: none;
+            border-radius: 50px;
+            color: white;
+            margin-top: 20px;
+        }
 
-    // 強制啟動
-    if (audioCtx.state === 'suspended') {
-        await audioCtx.resume();
-    }
-    
-    // 額外執行一次空的音效來「熱身」硬體
-    const oscillator = audioCtx.createOscillator();
-    const gain = audioCtx.createGain();
-    gain.gain.value = 0; // 無聲
-    oscillator.connect(gain);
-    gain.connect(audioCtx.destination);
-    oscillator.start(0);
-    oscillator.stop(0.1);
+        .piano {
+            display: flex;
+            position: relative;
+            background: #333;
+            padding: 10px;
+            border-radius: 8px;
+        }
 
-    document.getElementById('overlay').style.display = 'none';
-}
+        .key {
+            width: var(--white-key-width);
+            height: var(--white-key-height);
+            border: 1px solid #ccc;
+            background: white;
+            border-radius: 0 0 5px 5px;
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: flex-end;
+            padding-bottom: 10px;
+            user-select: none;
+        }
+
+        .key.active { background: #ddd; transform: translateY(2px); }
+
+        .key.black {
+            width: var(--black-key-width);
+            height: var(--black-key-height);
+            background: #222;
+            margin-left: calc(var(--black-key-width) / -2);
+            margin-right: calc(var(--black-key-width) / -2);
+            z-index: 2;
+            border: none;
+        }
+        .key.black.active { background: #444; }
+
+        @media (max-width: 600px) {
+            :root {
+                --white-key-width: 45px;
+                --white-key-height: 180px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="overlay" onclick="startApp()">
+        <h1>🎹 網頁鋼琴</h1>
+        <p>手機使用者請點擊下方按鈕啟動聲音</p>
+        <button class="start-btn">開始彈奏</button>
+    </div>
+
+    <div class="piano">
+        <div class="key" data-note="C4"></div>
+        <div class="key black" data-note="Cs4"></div>
+        <div class="key" data-note="D4"></div>
+        <div class="key black" data-note="Ds4"></div>
+        <div class="key" data-note="E4"></div>
+        <div class="key" data-note="F4"></div>
+        <div class="key black" data-note="Fs4"></div>
+        <div class="key" data-note="G4"></div>
+        <div class="key black" data-note="Gs4"></div>
+        <div class="key" data-note="A4"></div>
+        <div class="key black" data-note="As4"></div>
+        <div class="key" data-note="B4"></div>
+        <div class="key" data-note="C5"></div>
+    </div>
+
+    <script>
+        const notes = {"C4":261.63,"Cs4":277.18,"D4":293.66,"Ds4":311.13,"E4":329.63,"F4":349.23,"Fs4":369.99,"G4":392.00,"Gs4":415.30,"A4":440.00,"As4":466.16,"B4":493.88,"C5":523.25};
+        
+        let audioCtx = null;
+
+        // 核心修復：點擊時「恢復」AudioContext
+        async function startApp() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            
+            // 關鍵：在 iOS 上必須明確執行 resume()
+            if (audioCtx.state === 'suspended') {
+                await audioCtx.resume();
+            }
+            
+            document.getElementById('overlay').style.display = 'none';
+            console.log("AudioContext 狀態:", audioCtx.state);
+        }
+
+        function playNote(note) {
+            if (!audioCtx || audioCtx.state !== 'running') return;
+            
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(notes[note], audioCtx.currentTime);
+            
+            gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.8);
+            
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.8);
+        }
+
+        // 綁定觸控事件
+        document.querySelectorAll('.key').forEach(key => {
+            const handlePress = (e) => {
+                e.preventDefault();
+                const note = key.dataset.note;
+                playNote(note);
+                key.classList.add('active');
+            };
+            
+            const handleRelease = () => key.classList.remove('active');
+
+            key.addEventListener('touchstart', handlePress, {passive: false});
+            key.addEventListener('touchend', handleRelease);
+            key.addEventListener('mousedown', handlePress);
+            key.addEventListener('mouseup', handleRelease);
+            key.addEventListener('mouseleave', handleRelease);
+        });
+    </script>
+</body>
+</html>
